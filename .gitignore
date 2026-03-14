@@ -1,0 +1,51 @@
+# =========================
+# environment variables
+# =========================
+.env
+.env.local
+.env.*
+
+# =========================
+# python backend
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# python virtual environments
+.venv/
+venv/
+env/
+
+# =========================
+# node / next.js frontend
+# =========================
+node_modules/
+.next/
+out/
+dist/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE files
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# build artifacts
+# =========================
+*.log
+*.tmp
+*.cache
