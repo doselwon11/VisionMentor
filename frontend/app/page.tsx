@@ -9,6 +9,25 @@ declare global {
   }
 }
 
+type LanguageOption = {
+  label: string;
+  value: string;
+  speechLang: string;
+};
+
+const LANGUAGE_OPTIONS: LanguageOption[] = [
+  { label: "English", value: "English", speechLang: "en-US" },
+  { label: "Vietnamese", value: "Vietnamese", speechLang: "vi-VN" },
+  { label: "Spanish", value: "Spanish", speechLang: "es-ES" },
+  { label: "French", value: "French", speechLang: "fr-FR" },
+  { label: "German", value: "German", speechLang: "de-DE" },
+  { label: "Chinese", value: "Chinese", speechLang: "zh-CN" },
+  { label: "Japanese", value: "Japanese", speechLang: "ja-JP" },
+  { label: "Korean", value: "Korean", speechLang: "ko-KR" },
+  { label: "Arabic", value: "Arabic", speechLang: "ar-SA" },
+  { label: "Hindi", value: "Hindi", speechLang: "hi-IN" },
+];
+
 export default function HomePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -25,10 +44,14 @@ export default function HomePage() {
 
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
-  const [uploadedPdfName, setUploadedPdfName] = useState<string>("");
+  const [uploadedPdfName, setUploadedPdfName] = useState("");
 
   const [answerLanguage, setAnswerLanguage] = useState("English");
   const [cameraStarted, setCameraStarted] = useState(false);
+
+  const currentLanguage =
+    LANGUAGE_OPTIONS.find((option) => option.value === answerLanguage) ||
+    LANGUAGE_OPTIONS[0];
 
   async function startCamera() {
     try {
@@ -146,6 +169,7 @@ export default function HomePage() {
     const recognition = new SpeechRecognition();
     recognition.interimResults = false;
     recognition.continuous = false;
+    recognition.lang = currentLanguage.speechLang;
 
     setIsListening(true);
 
@@ -168,9 +192,10 @@ export default function HomePage() {
 
   async function askQuestion() {
     if (loading) return;
+
     if (!question.trim()) {
-        alert("Please provide a question.");
-        return;
+      alert("Please provide a question.");
+      return;
     }
 
     setLoading(true);
@@ -178,86 +203,85 @@ export default function HomePage() {
     setVisualSvg(null);
 
     try {
-        let res: Response;
+      let res: Response;
 
-        if (uploadedPdf) {
-        // pdf flow
+      if (uploadedPdf) {
         const formData = new FormData();
         formData.append("file", uploadedPdf);
         formData.append("question", question.trim());
         formData.append("answer_language", answerLanguage);
 
         res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ask-pdf`, {
-            method: "POST",
-            body: formData,
+          method: "POST",
+          body: formData,
         });
-        } else {
-        // image / camera flow
+      } else {
         const image_base64 = getCurrentImageBase64();
 
         if (!image_base64) {
-            throw new Error("Please start the camera, upload an image, or upload a PDF.");
+          throw new Error("Please start the camera, upload an image, or upload a PDF.");
         }
 
         res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ask`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             question: question.trim(),
             image_base64,
             answer_language: answerLanguage,
-            }),
+          }),
         });
-        }
+      }
 
-        let data: any = {};
-        try {
+      let data: any = {};
+      try {
         data = await res.json();
-        } catch {
+      } catch {
         throw new Error("The server returned an unreadable response.");
-        }
+      }
 
-        if (!res.ok) {
+      if (!res.ok) {
         const message = String(data?.detail || data?.error || "Request failed.");
 
         if (message.includes("429") || message.includes("RESOURCE_EXHAUSTED")) {
-            throw new Error(
+          throw new Error(
             "VisionMentor has temporarily hit the Gemini quota limit. Please wait a little and try again."
-            );
+          );
         }
 
         throw new Error(message);
-        }
+      }
 
-        const finalAnswer = String(data?.answer_text || "").trim();
+      const finalAnswer = String(data?.answer_text || "").trim();
 
-        if (!finalAnswer) {
+      if (!finalAnswer) {
         throw new Error("No answer was returned by the tutor.");
-        }
+      }
 
-        setAnswer(finalAnswer);
+      setAnswer(finalAnswer);
 
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(finalAnswer);
-        speechSynthesis.speak(utter);
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(finalAnswer);
+      utter.lang = currentLanguage.speechLang;
+      speechSynthesis.speak(utter);
     } catch (error: any) {
-        const message = String(error?.message || "Something went wrong.");
+      const message = String(error?.message || "Something went wrong.");
 
-        if (
+      if (
         message.includes("429") ||
         message.includes("RESOURCE_EXHAUSTED") ||
         message.toLowerCase().includes("quota")
-        ) {
+      ) {
         setAnswer(
-            "VisionMentor has temporarily hit the Gemini quota limit. Please wait a little and try again."
+          "VisionMentor has temporarily hit the Gemini quota limit. Please wait a little and try again."
         );
-        } else {
+      } else {
         setAnswer(`Error: ${message}`);
-        }
+      }
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-}
+  }
 
   async function generateVisual() {
     if (!answer || visualLoading || loading) return;
@@ -288,12 +312,14 @@ export default function HomePage() {
         alert("No visual was returned.");
       }
     } catch (error: any) {
-        const message = String(error.message || "");
-        if (message.includes("429") || message.includes("RESOURCE_EXHAUSTED")) {
-            alert("Visual generation is temporarily unavailable because the Gemini quota limit was reached. Please wait and try again.");
-        } else {
-            alert(message);
-        }
+      const message = String(error?.message || "");
+      if (message.includes("429") || message.includes("RESOURCE_EXHAUSTED")) {
+        alert(
+          "Visual generation is temporarily unavailable because the Gemini quota limit was reached. Please wait and try again."
+        );
+      } else {
+        alert(message);
+      }
     } finally {
       setVisualLoading(false);
     }
@@ -308,7 +334,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.22),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.18),_transparent_25%),radial-gradient(circle_at_bottom,_rgba(34,197,94,0.14),_transparent_30%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.22),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.18),_transparent_25%),radial-gradient(circle_at_bottom,_rgba(34,197,94,0.14),_transparent_30%)]" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10">
         <header className="mb-8 rounded-[28px] border border-white/10 bg-white/5 px-5 py-6 shadow-2xl backdrop-blur-xl sm:px-6">
@@ -348,7 +374,7 @@ export default function HomePage() {
           </div>
         </header>
 
-        <div className="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -364,189 +390,185 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="space-y-4">
-                <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black/30 shadow-inner">
-                  {!uploadedImage && !uploadedPdf && (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="aspect-video w-full bg-black object-cover"
-                    />
-                  )}
+            <div className="space-y-5">
+              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black/30 shadow-inner">
+                {!uploadedImage && !uploadedPdf && (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="aspect-video w-full bg-black object-cover"
+                  />
+                )}
 
-                  {uploadedImage && (
-                    <img
-                      src={uploadedImage}
-                      alt="Uploaded homework"
-                      className="aspect-video w-full object-contain bg-slate-900"
-                    />
-                  )}
+                {uploadedImage && (
+                  <img
+                    src={uploadedImage}
+                    alt="Uploaded homework"
+                    className="aspect-video w-full object-contain bg-slate-900"
+                  />
+                )}
 
-                  {uploadedPdf && (
-                    <div className="flex aspect-video items-center justify-center bg-slate-900 px-6 text-center">
-                      <div>
-                        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/20 text-3xl">
-                          📄
-                        </div>
-                        <p className="text-lg font-semibold text-white">PDF ready</p>
-                        <p className="mt-2 break-all text-sm text-slate-300">{uploadedPdfName}</p>
-                        <p className="mt-3 text-sm text-slate-400">
-                          VisionMentor will analyze the uploaded document together with your question.
-                        </p>
+                {uploadedPdf && (
+                  <div className="flex aspect-video items-center justify-center bg-slate-900 px-6 text-center">
+                    <div>
+                      <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/20 text-3xl">
+                        📄
                       </div>
+                      <p className="text-lg font-semibold text-white">PDF ready</p>
+                      <p className="mt-2 break-all text-sm text-slate-300">{uploadedPdfName}</p>
+                      <p className="mt-3 text-sm text-slate-400">
+                        VisionMentor will analyze the uploaded document together with your
+                        question.
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {!cameraStarted && !uploadedImage && !uploadedPdf && (
-                    <div className="flex aspect-video items-center justify-center text-center text-slate-400">
-                      <div>
-                        <p className="text-lg font-medium text-slate-300">No source selected</p>
-                        <p className="mt-2 text-sm">
-                          Start the camera, upload an image, or upload a PDF document.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <canvas ref={canvasRef} className="hidden" />
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-indigo-600 to-violet-500 px-4 py-4 text-left shadow-lg shadow-indigo-900/30 transition hover:scale-[1.01] hover:brightness-110"
-                    onClick={startCamera}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
-                      📷
-                    </div>
+                {!cameraStarted && !uploadedImage && !uploadedPdf && (
+                  <div className="flex aspect-video items-center justify-center text-center text-slate-400">
                     <div>
-                      <div className="font-semibold text-white">Start camera</div>
-                      <div className="text-sm text-indigo-100">use live input</div>
+                      <p className="text-lg font-medium text-slate-300">No source selected</p>
+                      <p className="mt-2 text-sm">
+                        Start the camera, upload an image, or upload a PDF document.
+                      </p>
                     </div>
-                  </button>
-
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
-                      🖼️
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">Upload image</div>
-                      <div className="text-sm text-slate-300">screenshots or photos</div>
-                    </div>
-                  </button>
-
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
-                    onClick={() => pdfInputRef.current?.click()}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
-                      📄
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">Upload PDF</div>
-                      <div className="text-sm text-slate-300">analyze document</div>
-                    </div>
-                  </button>
-
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
-                    onClick={startVoiceInput}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
-                      🎙️
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">
-                        {isListening ? "Listening..." : "Speak question"}
-                      </div>
-                      <div className="text-sm text-slate-300">voice input</div>
-                    </div>
-                  </button>
-
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-4 text-left shadow-lg shadow-emerald-900/30 transition hover:scale-[1.01] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
-                    onClick={askQuestion}
-                    disabled={loading}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
-                      🧠
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">
-                        {loading ? "Thinking..." : "Ask tutor"}
-                      </div>
-                      <div className="text-sm text-emerald-100">analyze the problem</div>
-                    </div>
-                  </button>
-
-                  <button
-                    className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-pink-500 to-fuchsia-500 px-4 py-4 text-left shadow-lg shadow-pink-900/30 transition hover:scale-[1.01] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
-                    onClick={generateVisual}
-                    disabled={!answer || loading || visualLoading}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
-                      ✨
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">
-                        {visualLoading ? "Generating..." : "Generate visual"}
-                      </div>
-                      <div className="text-sm text-pink-100">create a diagram</div>
-                    </div>
-                  </button>
-                </div>
-
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-
-                <input
-                  ref={pdfInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  onChange={handlePdfUpload}
-                  className="hidden"
-                />
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-white/10 bg-slate-900/60 p-4">
-                  <label className="mb-2 block text-sm font-medium text-slate-200">
-                    Answer language
-                  </label>
-                  <select
-                    value={answerLanguage}
-                    onChange={(e) => setAnswerLanguage(e.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-indigo-400"
-                  >
-                    <option>English</option>
-                    <option>Vietnamese</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                    <option>German</option>
-                    <option>Chinese</option>
-                    <option>Japanese</option>
-                    <option>Korean</option>
-                    <option>Arabic</option>
-                    <option>Hindi</option>
-                  </select>
+              <canvas ref={canvasRef} className="hidden" />
 
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-slate-300">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-indigo-600 to-violet-500 px-4 py-4 text-left shadow-lg shadow-indigo-900/30 transition hover:scale-[1.01] hover:brightness-110"
+                  onClick={startCamera}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
+                    📷
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Start camera</div>
+                    <div className="text-sm text-indigo-100">use live input</div>
+                  </div>
+                </button>
+
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
+                    🖼️
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Upload image</div>
+                    <div className="text-sm text-slate-300">screenshots or photos</div>
+                  </div>
+                </button>
+
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
+                  onClick={() => pdfInputRef.current?.click()}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
+                    📄
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Upload PDF</div>
+                    <div className="text-sm text-slate-300">analyze document</div>
+                  </div>
+                </button>
+
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl border border-white/10 bg-white/10 px-4 py-4 text-left transition hover:scale-[1.01] hover:bg-white/15"
+                  onClick={startVoiceInput}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-xl">
+                    🎙️
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">
+                      {isListening ? "Listening..." : "Speak question"}
+                    </div>
+                    <div className="text-sm text-slate-300">voice input</div>
+                  </div>
+                </button>
+
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-4 text-left shadow-lg shadow-emerald-900/30 transition hover:scale-[1.01] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={askQuestion}
+                  disabled={loading}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
+                    🧠
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">
+                      {loading ? "Thinking..." : "Ask tutor"}
+                    </div>
+                    <div className="text-sm text-emerald-100">analyze the problem</div>
+                  </div>
+                </button>
+
+                <button
+                  className="flex min-h-[76px] items-center gap-3 rounded-3xl bg-gradient-to-r from-pink-500 to-fuchsia-500 px-4 py-4 text-left shadow-lg shadow-pink-900/30 transition hover:scale-[1.01] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={generateVisual}
+                  disabled={!answer || loading || visualLoading}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-xl">
+                    ✨
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">
+                      {visualLoading ? "Generating..." : "Generate visual"}
+                    </div>
+                    <div className="text-sm text-pink-100">create a diagram</div>
+                  </div>
+                </button>
+              </div>
+
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf"
+                onChange={handlePdfUpload}
+                className="hidden"
+              />
+
+              <div className="grid gap-4 lg:grid-cols-[0.42fr_0.58fr]">
+                <div className="space-y-4">
+                  <div className="rounded-[24px] border border-white/10 bg-slate-900/60 p-4">
+                    <label className="mb-2 block text-sm font-medium text-slate-200">
+                      Answer language
+                    </label>
+                    <select
+                      value={answerLanguage}
+                      onChange={(e) => setAnswerLanguage(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-indigo-400"
+                    >
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
                     Ask in any language. VisionMentor will answer in the language you choose.
                   </div>
 
-                  <div className="mt-3 rounded-2xl border border-indigo-400/20 bg-indigo-500/10 p-3 text-sm text-indigo-100">
+                  <div className="rounded-[24px] border border-indigo-400/20 bg-indigo-500/10 p-4 text-sm text-indigo-100">
                     Voice or typed question takes priority. Uploaded images and PDFs are treated
                     as supporting context.
                   </div>
@@ -557,7 +579,7 @@ export default function HomePage() {
                     Your question
                   </label>
                   <textarea
-                    className="min-h-56 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-400"
+                    className="min-h-[260px] w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-400"
                     placeholder={`Ask in any language.\n\nExamples:\n- Help me solve this math problem.\n- Giải thích bài toán này giúp mình.\n- Explícame esta pregunta paso a paso.\n- Please explain dynamic programming.`}
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
@@ -569,12 +591,12 @@ export default function HomePage() {
 
           <section className="space-y-6">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-semibold text-white">Tutor response</h2>
                   <p className="mt-1 text-sm text-slate-300">
-                    VisionMentor answers your explicit question first and uses the uploaded content
-                    as supporting context.
+                    VisionMentor answers your explicit question first and uses the uploaded
+                    content as supporting context.
                   </p>
                 </div>
 
@@ -589,7 +611,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="min-h-[280px] rounded-[24px] border border-white/10 bg-slate-950/80 p-5">
+              <div className="min-h-[360px] rounded-[24px] border border-white/10 bg-slate-950/80 p-5">
                 {loading ? (
                   <div className="space-y-4">
                     <div className="h-4 w-3/4 animate-pulse rounded-full bg-white/10" />
@@ -613,7 +635,7 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="min-h-[320px] overflow-auto rounded-[24px] border border-white/10 bg-white p-4 text-black">
+              <div className="min-h-[360px] max-h-[520px] overflow-auto rounded-[24px] border border-white/10 bg-white p-4 text-black">
                 {visualLoading ? (
                   <div className="flex min-h-[280px] items-center justify-center text-center text-slate-500">
                     <div>
@@ -639,6 +661,14 @@ export default function HomePage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="rounded-[28px] border border-indigo-400/20 bg-indigo-500/10 p-5 shadow-2xl backdrop-blur-xl">
+              <h3 className="text-lg font-semibold text-white">Demo tip</h3>
+              <p className="mt-2 text-sm leading-7 text-indigo-100">
+                For your submission video, use one clean homework example, ask one focused
+                question, then generate the visual explanation right after the tutor answer appears.
+              </p>
             </div>
           </section>
         </div>
