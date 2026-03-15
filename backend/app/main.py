@@ -5,7 +5,11 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.live_agent import ask_visionmentor, ask_visionmentor_with_pdf
+from app.live_agent import (
+    ask_visionmentor,
+    ask_visionmentor_with_pdf,
+    ask_followup_visionmentor,
+)
 from app.image_agent import generate_visual
 from app.pdf_agent import extract_pdf_text_and_first_page
 
@@ -37,13 +41,19 @@ class VisualRequest(BaseModel):
     answer_language: str = "English"
 
 
+class FollowupRequest(BaseModel):
+    original_question: str
+    current_answer: str
+    followup_question: str
+    answer_language: str = "English"
+
+
 def normalize_error_message(exc: Exception) -> str:
     message = str(exc).strip()
 
     if not message:
         return "An unexpected error occurred."
 
-    upper_message = message.upper()
     lower_message = message.lower()
 
     if "429" in message or "resource_exhausted" in lower_message or "quota" in lower_message:
@@ -96,7 +106,7 @@ def health():
     return {
         "ok": True,
         "service": "VisionMentor API",
-        "routes": ["/ask", "/ask-pdf", "/generate-visual"],
+        "routes": ["/ask", "/ask-pdf", "/generate-visual", "/followup"],
     }
 
 
@@ -153,6 +163,23 @@ async def ask_pdf(
         result["file_name"] = file.filename or "uploaded.pdf"
         return result
 
+    except Exception as exc:
+        raise_http_error(exc)
+
+
+@app.post("/followup")
+async def followup(req: FollowupRequest):
+    try:
+        if not req.followup_question or not req.followup_question.strip():
+            raise ValueError("Question cannot be empty.")
+
+        result = await ask_followup_visionmentor(
+            original_question=req.original_question,
+            current_answer=req.current_answer,
+            followup_question=req.followup_question,
+            answer_language=req.answer_language,
+        )
+        return result
     except Exception as exc:
         raise_http_error(exc)
 

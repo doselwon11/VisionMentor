@@ -15,6 +15,8 @@ type LanguageOption = {
   speechLang: string;
 };
 
+type AppPage = "input" | "tutor" | "visual";
+
 const LANGUAGE_OPTIONS: LanguageOption[] = [
   { label: "English", value: "English", speechLang: "en-US" },
   { label: "Vietnamese", value: "Vietnamese", speechLang: "vi-VN" },
@@ -34,6 +36,8 @@ export default function HomePage() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [activePage, setActivePage] = useState<AppPage>("input");
+
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [visualSvg, setVisualSvg] = useState<string | null>(null);
@@ -48,6 +52,12 @@ export default function HomePage() {
 
   const [answerLanguage, setAnswerLanguage] = useState("English");
   const [cameraStarted, setCameraStarted] = useState(false);
+
+  const [followupQuestion, setFollowupQuestion] = useState("");
+  const [followupLoading, setFollowupLoading] = useState(false);
+  const [chatHistory, setChatHistory] = useState<
+    Array<{ role: "user" | "assistant"; text: string }>
+  >([]);
 
   const currentLanguage =
     LANGUAGE_OPTIONS.find((option) => option.value === answerLanguage) ||
@@ -198,6 +208,7 @@ export default function HomePage() {
       return;
     }
 
+    setActivePage("tutor");
     setLoading(true);
     setAnswer("VisionMentor is analyzing your problem...");
     setVisualSvg(null);
@@ -260,6 +271,11 @@ export default function HomePage() {
 
       setAnswer(finalAnswer);
 
+      setChatHistory([
+        { role: "user", text: question.trim() },
+        { role: "assistant", text: finalAnswer },
+      ]);
+
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(finalAnswer);
       utter.lang = currentLanguage.speechLang;
@@ -283,9 +299,62 @@ export default function HomePage() {
     }
   }
 
+  async function askFollowupQuestion() {
+    if (followupLoading || !followupQuestion.trim() || !answer.trim()) return;
+
+    setFollowupLoading(true);
+
+    const userFollowup = followupQuestion.trim();
+
+    setChatHistory((prev) => [...prev, { role: "user", text: userFollowup }]);
+    setFollowupQuestion("");
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/followup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          original_question: question.trim(),
+          current_answer: answer.trim(),
+          followup_question: userFollowup,
+          answer_language: answerLanguage,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to get follow-up answer.");
+      }
+
+      const finalAnswer = String(data?.answer_text || "").trim();
+
+      if (!finalAnswer) {
+        throw new Error("No follow-up answer was returned.");
+      }
+
+      setAnswer(finalAnswer);
+      setChatHistory((prev) => [...prev, { role: "assistant", text: finalAnswer }]);
+
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(finalAnswer);
+      utter.lang = currentLanguage.speechLang;
+      speechSynthesis.speak(utter);
+    } catch (error: any) {
+      const message = String(error?.message || "Something went wrong.");
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: `Error: ${message}` },
+      ]);
+    } finally {
+      setFollowupLoading(false);
+    }
+  }
+
   async function generateVisual() {
     if (!answer || visualLoading || loading) return;
 
+    setActivePage("visual");
     setVisualLoading(true);
     setVisualSvg(null);
 
@@ -332,49 +401,81 @@ export default function HomePage() {
     return "no input yet";
   }
 
+  function pageButtonClasses(page: AppPage) {
+    const isActive = activePage === page;
+    return `rounded-full px-4 py-2 text-sm font-medium transition ${
+      isActive
+        ? "bg-white text-slate-950 shadow-lg"
+        : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+    }`;
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.22),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.18),_transparent_25%),radial-gradient(circle_at_bottom,_rgba(34,197,94,0.14),_transparent_30%)]" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10">
         <header className="mb-8 rounded-[28px] border border-white/10 bg-white/5 px-5 py-6 shadow-2xl backdrop-blur-xl sm:px-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-3 inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-sm text-indigo-200">
-                live multimodal tutoring
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="mb-3 inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-sm text-indigo-200">
+                  live multimodal tutoring
+                </div>
+                <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
+                  VisionMentor
+                </h1>
+                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
+                  An AI tutor that understands your explicit question first, uses images or PDFs
+                  as supporting context, responds in your chosen language, and creates visual
+                  explanations to help you learn faster.
+                </p>
               </div>
-              <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
-                VisionMentor
-              </h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
-                An AI tutor that understands your explicit question first, uses images or PDFs
-                as supporting context, responds in your chosen language, and creates visual
-                explanations to help you learn faster.
-              </p>
+
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                  <div className="font-semibold text-white">camera</div>
+                  <div className="mt-1 text-slate-300">live input</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                  <div className="font-semibold text-white">upload</div>
+                  <div className="mt-1 text-slate-300">images + pdfs</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                  <div className="font-semibold text-white">voice</div>
+                  <div className="mt-1 text-slate-300">ask naturally</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                  <div className="font-semibold text-white">visuals</div>
+                  <div className="mt-1 text-slate-300">svg diagrams</div>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
-                <div className="font-semibold text-white">camera</div>
-                <div className="mt-1 text-slate-300">live input</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
-                <div className="font-semibold text-white">upload</div>
-                <div className="mt-1 text-slate-300">images + pdfs</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
-                <div className="font-semibold text-white">voice</div>
-                <div className="mt-1 text-slate-300">ask naturally</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
-                <div className="font-semibold text-white">visuals</div>
-                <div className="mt-1 text-slate-300">svg diagrams</div>
-              </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className={pageButtonClasses("input")}
+                onClick={() => setActivePage("input")}
+              >
+                Input workspace
+              </button>
+              <button
+                className={pageButtonClasses("tutor")}
+                onClick={() => setActivePage("tutor")}
+              >
+                Tutor response
+              </button>
+              <button
+                className={pageButtonClasses("visual")}
+                onClick={() => setActivePage("visual")}
+              >
+                Visual explanation
+              </button>
             </div>
           </div>
         </header>
 
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        {activePage === "input" && (
           <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -507,7 +608,7 @@ export default function HomePage() {
                     <div className="font-semibold text-white">
                       {loading ? "Thinking..." : "Ask tutor"}
                     </div>
-                    <div className="text-sm text-emerald-100">analyze the problem</div>
+                    <div className="text-sm text-emerald-100">go to tutor page</div>
                   </div>
                 </button>
 
@@ -523,7 +624,7 @@ export default function HomePage() {
                     <div className="font-semibold text-white">
                       {visualLoading ? "Generating..." : "Generate visual"}
                     </div>
-                    <div className="text-sm text-pink-100">create a diagram</div>
+                    <div className="text-sm text-pink-100">go to visual page</div>
                   </div>
                 </button>
               </div>
@@ -588,90 +689,204 @@ export default function HomePage() {
               </div>
             </div>
           </section>
+        )}
 
-          <section className="space-y-6">
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-semibold text-white">Tutor response</h2>
-                  <p className="mt-1 text-sm text-slate-300">
-                    VisionMentor answers your explicit question first and uses the uploaded
-                    content as supporting context.
-                  </p>
-                </div>
-
-                <div
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    loading
-                      ? "border border-amber-400/20 bg-amber-500/15 text-amber-200"
-                      : "border border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-                  }`}
-                >
-                  {loading ? "thinking..." : "ready"}
-                </div>
+        {activePage === "tutor" && (
+          <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-white">Tutor response</h2>
+                <p className="mt-1 text-sm text-slate-300">
+                  VisionMentor answers your explicit question first and uses the uploaded
+                  content as supporting context.
+                </p>
               </div>
 
-              <div className="min-h-[360px] rounded-[24px] border border-white/10 bg-slate-950/80 p-5">
-                {loading ? (
-                  <div className="space-y-4">
-                    <div className="h-4 w-3/4 animate-pulse rounded-full bg-white/10" />
-                    <div className="h-4 w-full animate-pulse rounded-full bg-white/10" />
-                    <div className="h-4 w-5/6 animate-pulse rounded-full bg-white/10" />
-                    <div className="h-4 w-2/3 animate-pulse rounded-full bg-white/10" />
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-200">
-                    {answer || "No response yet. Ask a question to get started."}
-                  </p>
-                )}
+              <div
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  loading
+                    ? "border border-amber-400/20 bg-amber-500/15 text-amber-200"
+                    : "border border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+                }`}
+              >
+                {loading ? "thinking..." : "ready"}
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
-              <div className="mb-4">
+            <div className="mb-4 flex flex-wrap gap-3">
+              <button
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+                onClick={() => setActivePage("input")}
+              >
+                Back to input workspace
+              </button>
+
+              <button
+                className="rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={generateVisual}
+                disabled={!answer || loading || visualLoading}
+              >
+                {visualLoading ? "Generating visual..." : "Generate visual"}
+              </button>
+            </div>
+
+            <div className="min-h-[420px] rounded-[24px] border border-white/10 bg-slate-950/80 p-5">
+              {loading ? (
+                <div className="space-y-4">
+                  <div className="h-4 w-3/4 animate-pulse rounded-full bg-white/10" />
+                  <div className="h-4 w-full animate-pulse rounded-full bg-white/10" />
+                  <div className="h-4 w-5/6 animate-pulse rounded-full bg-white/10" />
+                  <div className="h-4 w-2/3 animate-pulse rounded-full bg-white/10" />
+                </div>
+              ) : chatHistory.length > 0 ? (
+                <div className="space-y-4">
+                  {chatHistory.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-[15px] leading-7 ${
+                        message.role === "user"
+                          ? "ml-auto border border-indigo-400/20 bg-indigo-500/20 text-indigo-100"
+                          : "mr-auto border border-white/10 bg-white/5 text-slate-200"
+                      }`}
+                    >
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">
+                        {message.role === "user" ? "You" : "VisionMentor"}
+                      </div>
+                      <p className="whitespace-pre-wrap">{message.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-200">
+                  No response yet. Go back to the input workspace and ask a question.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-[24px] border border-white/10 bg-slate-900/60 p-4">
+              <label className="mb-2 block text-sm font-medium text-slate-200">
+                Ask a follow-up question
+              </label>
+
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => setFollowupQuestion("Explain step 2 more simply.")}
+                >
+                  Explain step 2
+                </button>
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => setFollowupQuestion("Can you make this explanation simpler?")}
+                >
+                  Explain simpler
+                </button>
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => setFollowupQuestion("Can you give me another example?")}
+                >
+                  Another example
+                </button>
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => setFollowupQuestion("Quiz me on this concept.")}
+                >
+                  Quiz me
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <textarea
+                  className="min-h-[110px] flex-1 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-400"
+                  placeholder="Ask a follow-up question about this same problem..."
+                  value={followupQuestion}
+                  onChange={(e) => setFollowupQuestion(e.target.value)}
+                />
+                <button
+                  className="rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-500 px-5 py-4 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:w-[180px]"
+                  onClick={askFollowupQuestion}
+                  disabled={!answer || !followupQuestion.trim() || followupLoading}
+                >
+                  {followupLoading ? "Thinking..." : "Ask follow-up"}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activePage === "visual" && (
+          <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
                 <h2 className="text-2xl font-semibold text-white">Visual explanation</h2>
                 <p className="mt-1 text-sm text-slate-300">
                   Generate a supporting diagram to make the concept easier to understand.
                 </p>
               </div>
 
-              <div className="min-h-[360px] max-h-[520px] overflow-auto rounded-[24px] border border-white/10 bg-white p-4 text-black">
-                {visualLoading ? (
-                  <div className="flex min-h-[280px] items-center justify-center text-center text-slate-500">
-                    <div>
-                      <p className="text-lg font-medium text-slate-700">Generating visual...</p>
-                      <p className="mt-2 text-sm">
-                        VisionMentor is creating a diagram for your explanation.
-                      </p>
-                    </div>
-                  </div>
-                ) : visualSvg ? (
-                  <div
-                    dangerouslySetInnerHTML={{ __html: visualSvg }}
-                    className="w-full"
-                  />
-                ) : (
-                  <div className="flex min-h-[280px] items-center justify-center text-center text-slate-500">
-                    <div>
-                      <p className="text-lg font-medium text-slate-700">No visual yet</p>
-                      <p className="mt-2 text-sm">
-                        Ask the tutor first, then click “Generate visual”.
-                      </p>
-                    </div>
-                  </div>
-                )}
+              <div
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  visualLoading
+                    ? "border border-amber-400/20 bg-amber-500/15 text-amber-200"
+                    : "border border-fuchsia-400/20 bg-fuchsia-500/15 text-fuchsia-200"
+                }`}
+              >
+                {visualLoading ? "generating..." : "ready"}
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-indigo-400/20 bg-indigo-500/10 p-5 shadow-2xl backdrop-blur-xl">
-              <h3 className="text-lg font-semibold text-white">Demo tip</h3>
-              <p className="mt-2 text-sm leading-7 text-indigo-100">
-                For your submission video, use one clean homework example, ask one focused
-                question, then generate the visual explanation right after the tutor answer appears.
-              </p>
+            <div className="mb-4 flex flex-wrap gap-3">
+              <button
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+                onClick={() => setActivePage("input")}
+              >
+                Back to input workspace
+              </button>
+
+              <button
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+                onClick={() => setActivePage("tutor")}
+              >
+                Go to tutor response
+              </button>
+
+              <button
+                className="rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={generateVisual}
+                disabled={!answer || loading || visualLoading}
+              >
+                {visualLoading ? "Generating..." : "Regenerate visual"}
+              </button>
+            </div>
+
+            <div className="min-h-[420px] max-h-[620px] overflow-auto rounded-[24px] border border-white/10 bg-white p-4 text-black">
+              {visualLoading ? (
+                <div className="flex min-h-[280px] items-center justify-center text-center text-slate-500">
+                  <div>
+                    <p className="text-lg font-medium text-slate-700">Generating visual...</p>
+                    <p className="mt-2 text-sm">
+                      VisionMentor is creating a diagram for your explanation.
+                    </p>
+                  </div>
+                </div>
+              ) : visualSvg ? (
+                <div
+                  dangerouslySetInnerHTML={{ __html: visualSvg }}
+                  className="w-full"
+                />
+              ) : (
+                <div className="flex min-h-[280px] items-center justify-center text-center text-slate-500">
+                  <div>
+                    <p className="text-lg font-medium text-slate-700">No visual yet</p>
+                    <p className="mt-2 text-sm">
+                      Go back to input or tutor response and click “Generate visual”.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
-        </div>
+        )}
       </div>
     </main>
   );

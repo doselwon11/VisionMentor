@@ -80,7 +80,6 @@ async def ask_visionmentor(
         raise RuntimeError(f"VisionMentor failed to generate a response: {str(e)}")
 
 
-
 async def ask_visionmentor_with_pdf(
     question: str,
     pdf_text: str,
@@ -123,26 +122,86 @@ PDF text:
             }
         )
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=[
-            {
-                "role": "user",
-                "parts": parts,
-            }
-        ],
-    )
-
-    answer_text = getattr(response, "text", None)
-
-    if not answer_text:
-        answer_text = (
-            f"I could not generate a clear answer in {answer_language}. "
-            "Please try again with a clearer PDF or a more specific question."
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[
+                {
+                    "role": "user",
+                    "parts": parts,
+                }
+            ],
         )
 
-    return {
-        "answer_text": answer_text.strip(),
-        "topic": question.strip(),
-        "answer_language": answer_language,
-    }
+        answer_text = getattr(response, "text", None)
+
+        if not answer_text:
+            answer_text = (
+                f"I could not generate a clear answer in {answer_language}. "
+                "Please try again with a clearer PDF or a more specific question."
+            )
+
+        return {
+            "answer_text": answer_text.strip(),
+            "topic": question.strip(),
+            "answer_language": answer_language,
+        }
+    except Exception as e:
+        raise RuntimeError(f"VisionMentor failed to generate a PDF response: {str(e)}")
+
+
+async def ask_followup_visionmentor(
+    original_question: str,
+    current_answer: str,
+    followup_question: str,
+    answer_language: str = "English",
+):
+    if not followup_question or not followup_question.strip():
+        raise ValueError("Question cannot be empty.")
+
+    model_name = os.getenv("VISIONMENTOR_MODEL", "gemini-2.5-flash")
+
+    prompt = f"""
+You are VisionMentor, a calm and supportive AI tutor continuing an existing tutoring session.
+
+Rules:
+- answer the student's follow-up question using the existing tutoring context
+- stay focused on the same problem or concept unless the student clearly changes topic
+- explain clearly and step by step
+- use simple, student-friendly wording
+- answer fully in {answer_language}
+- use 3 to 5 short sentences by default
+- end with one short check-for-understanding question
+
+Original student question:
+{original_question}
+
+Current tutor answer:
+{current_answer}
+
+Student follow-up question:
+{followup_question}
+""".strip()
+
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+        )
+
+        answer_text = getattr(response, "text", None)
+
+        if not answer_text:
+            answer_text = (
+                f"I could not generate a clear follow-up answer in {answer_language}. "
+                "Please try asking the follow-up in a different way."
+            )
+
+        return {
+            "answer_text": answer_text.strip(),
+            "topic": original_question.strip() if original_question else "Follow-up",
+            "answer_language": answer_language,
+            "followup_question": followup_question.strip(),
+        }
+    except Exception as e:
+        raise RuntimeError(f"VisionMentor failed to generate a follow-up response: {str(e)}")
