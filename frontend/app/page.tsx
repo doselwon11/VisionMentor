@@ -42,15 +42,19 @@ export default function HomePage() {
     const canvas = canvasRef.current;
     if (!video || !canvas || !video.videoWidth || !video.videoHeight) return null;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const maxWidth = 960;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+
+    canvas.width = Math.floor(video.videoWidth * scale);
+    canvas.height = Math.floor(video.videoHeight * scale);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.9).split(",")[1];
-  }
+    return canvas.toDataURL("image/jpeg", 0.72).split(",")[1];
+}
+
 
   function getCurrentImageBase64(): string | null {
     if (uploadedImage) {
@@ -65,13 +69,31 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setUploadedImage(reader.result);
+        if (typeof reader.result !== "string") return;
+
+        const img = new Image();
+        img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxWidth = 1200;
+        const scale = Math.min(1, maxWidth / img.width);
+
+        canvas.width = Math.floor(img.width * scale);
+        canvas.height = Math.floor(img.height * scale);
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.78);
+
+        setUploadedImage(compressed);
         setCameraStarted(false);
-      }
+        };
+        img.src = reader.result;
     };
     reader.readAsDataURL(file);
-  }
+}
+
 
   function startVoiceInput() {
     const SpeechRecognition =
@@ -146,38 +168,43 @@ export default function HomePage() {
     }
   }
 
+  
+
   async function generateVisual() {
-    if (!answer) return;
+    if (!answer || visualLoading) return;
 
     setVisualLoading(true);
+    setVisualSvg(null);
+
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/generate-visual`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/generate-visual`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: question,
-          answer_text: answer,
-          answer_language: answerLanguage,
+            topic: question,
+            answer_text: answer,
+            answer_language: answerLanguage,
         }),
-      });
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (!res.ok) {
+        if (!res.ok) {
         throw new Error(data.detail || "Failed to generate visual.");
-      }
+        }
 
-      if (data.svg) {
+        if (data.svg) {
         setVisualSvg(data.svg);
-      } else {
+        } else {
         alert("No visual was returned.");
-      }
+        }
     } catch (error: any) {
-      alert(error.message);
+        alert(error.message);
     } finally {
-      setVisualLoading(false);
+        setVisualLoading(false);
     }
-  }
+ }
+
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
