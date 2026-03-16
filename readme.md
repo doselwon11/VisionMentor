@@ -128,7 +128,7 @@ VisionMentor
 └── README.md
 ```
 
-## How to Run Locally 
+## How to Run (Test) Locally 
 ### 1. Install dependencies
 Backend:
 ```
