@@ -1,6 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 declare global {
   interface Window {
@@ -17,6 +21,11 @@ type LanguageOption = {
 
 type AppPage = "input" | "tutor" | "visual";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 const LANGUAGE_OPTIONS: LanguageOption[] = [
   { label: "English", value: "English", speechLang: "en-US" },
   { label: "Vietnamese", value: "Vietnamese", speechLang: "vi-VN" },
@@ -29,6 +38,43 @@ const LANGUAGE_OPTIONS: LanguageOption[] = [
   { label: "Arabic", value: "Arabic", speechLang: "ar-SA" },
   { label: "Hindi", value: "Hindi", speechLang: "hi-IN" },
 ];
+
+function FormattedAnswer({ content }: { content: string }) {
+  return (
+    <div className="prose prose-invert max-w-none prose-p:my-3 prose-p:text-slate-200 prose-li:text-slate-200 prose-strong:text-white prose-headings:text-white prose-code:text-pink-200 prose-pre:bg-slate-900/80">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          p: ({ children }) => (
+            <p className="whitespace-pre-wrap leading-7">{children}</p>
+          ),
+          li: ({ children }) => <li className="mb-2 leading-7">{children}</li>,
+          strong: ({ children }) => (
+            <strong className="font-semibold text-white">{children}</strong>
+          ),
+          code: ({ children }) => (
+            <code className="rounded bg-white/10 px-1.5 py-0.5 text-sm text-pink-200">
+              {children}
+            </code>
+          ),
+          pre: ({ children }) => (
+            <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+              {children}
+            </pre>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-indigo-400/60 pl-4 text-slate-300">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 export default function HomePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -55,9 +101,7 @@ export default function HomePage() {
 
   const [followupQuestion, setFollowupQuestion] = useState("");
   const [followupLoading, setFollowupLoading] = useState(false);
-  const [chatHistory, setChatHistory] = useState<
-    Array<{ role: "user" | "assistant"; text: string }>
-  >([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   const currentLanguage =
     LANGUAGE_OPTIONS.find((option) => option.value === answerLanguage) ||
@@ -110,14 +154,11 @@ export default function HomePage() {
     if (!ctx) return null;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
     return canvas.toDataURL("image/jpeg", 0.72).split(",")[1];
   }
 
   function getCurrentImageBase64(): string | null {
-    if (uploadedImage) {
-      return uploadedImage.split(",")[1];
-    }
+    if (uploadedImage) return uploadedImage.split(",")[1];
     return captureFrame();
   }
 
@@ -189,13 +230,8 @@ export default function HomePage() {
       setIsListening(false);
     };
 
-    recognition.onerror = () => {
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
 
     recognition.start();
   }
@@ -270,7 +306,6 @@ export default function HomePage() {
       }
 
       setAnswer(finalAnswer);
-
       setChatHistory([
         { role: "user", text: question.trim() },
         { role: "assistant", text: finalAnswer },
@@ -282,18 +317,18 @@ export default function HomePage() {
       speechSynthesis.speak(utter);
     } catch (error: any) {
       const message = String(error?.message || "Something went wrong.");
-
-      if (
+      const finalMessage =
         message.includes("429") ||
         message.includes("RESOURCE_EXHAUSTED") ||
         message.toLowerCase().includes("quota")
-      ) {
-        setAnswer(
-          "VisionMentor has temporarily hit the Gemini quota limit. Please wait a little and try again."
-        );
-      } else {
-        setAnswer(`Error: ${message}`);
-      }
+          ? "VisionMentor has temporarily hit the Gemini quota limit. Please wait a little and try again."
+          : `Error: ${message}`;
+
+      setAnswer(finalMessage);
+      setChatHistory([
+        { role: "user", text: question.trim() },
+        { role: "assistant", text: finalMessage },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -303,7 +338,6 @@ export default function HomePage() {
     if (followupLoading || !followupQuestion.trim() || !answer.trim()) return;
 
     setFollowupLoading(true);
-
     const userFollowup = followupQuestion.trim();
 
     setChatHistory((prev) => [...prev, { role: "user", text: userFollowup }]);
@@ -743,16 +777,21 @@ export default function HomePage() {
                   {chatHistory.map((message, index) => (
                     <div
                       key={index}
-                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-[15px] leading-7 ${
+                      className={`max-w-[95%] rounded-2xl px-4 py-3 text-[15px] leading-7 ${
                         message.role === "user"
                           ? "ml-auto border border-indigo-400/20 bg-indigo-500/20 text-indigo-100"
                           : "mr-auto border border-white/10 bg-white/5 text-slate-200"
                       }`}
                     >
-                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">
                         {message.role === "user" ? "You" : "VisionMentor"}
                       </div>
-                      <p className="whitespace-pre-wrap">{message.text}</p>
+
+                      {message.role === "assistant" ? (
+                        <FormattedAnswer content={message.text} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{message.text}</p>
+                      )}
                     </div>
                   ))}
                 </div>
