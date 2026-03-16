@@ -454,11 +454,15 @@ export default function HomePage() {
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
                 <div className="mb-3 inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-sm text-indigo-200">
-                  live multimodal tutoring
+                  Live multimodal tutoring
                 </div>
-                <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
-                  VisionMentor
-                </h1>
+
+                <img
+                  src="/visionmentor-logo.png"
+                  alt="VisionMentor logo"
+                  className="mx-auto w-full max-w-md rounded-2xl border border-white/10 shadow-xl"
+                />
+
                 <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
                   An AI tutor that understands your explicit question first, uses images or PDFs
                   as supporting context, responds in your chosen language, and creates visual
