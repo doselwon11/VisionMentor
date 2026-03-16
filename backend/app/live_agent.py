@@ -1,3 +1,7 @@
+#  proof of Google Cloud
+#  this file code demonstrates use of Google Cloud services 
+#  and APIs (e.g. API calls to Vertex AI endpoints)
+
 from dotenv import load_dotenv
 load_dotenv()
 
