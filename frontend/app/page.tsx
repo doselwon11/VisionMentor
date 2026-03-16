@@ -311,10 +311,12 @@ export default function HomePage() {
         { role: "assistant", text: finalAnswer },
       ]);
 
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(finalAnswer);
-      utter.lang = currentLanguage.speechLang;
-      speechSynthesis.speak(utter);
+      // turn off speech synthesis for demo purposes
+      
+      // window.speechSynthesis.cancel();
+      // const utter = new SpeechSynthesisUtterance(finalAnswer);
+      // utter.lang = currentLanguage.speechLang;
+      // speechSynthesis.speak(utter);
     } catch (error: any) {
       const message = String(error?.message || "Something went wrong.");
       const finalMessage =
@@ -370,10 +372,10 @@ export default function HomePage() {
       setAnswer(finalAnswer);
       setChatHistory((prev) => [...prev, { role: "assistant", text: finalAnswer }]);
 
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(finalAnswer);
-      utter.lang = currentLanguage.speechLang;
-      speechSynthesis.speak(utter);
+      // window.speechSynthesis.cancel();
+      // const utter = new SpeechSynthesisUtterance(finalAnswer);
+      // utter.lang = currentLanguage.speechLang;
+      // speechSynthesis.speak(utter);
     } catch (error: any) {
       const message = String(error?.message || "Something went wrong.");
       setChatHistory((prev) => [
