@@ -220,3 +220,5 @@ gcloud builds submit --config cloudbuild.yaml
 
 ## License
 MIT License.
+
+@2026 Andy Nguyen. (2026 Gemini Live Agent Challenge)
