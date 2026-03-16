@@ -1,6 +1,10 @@
 import os
 import re
-from google import genai
+from google import genai 
+
+#  proof of Google Cloud
+#  this file code demonstrates use of Google Cloud services 
+#  and APIs (e.g. API calls to Vertex AI endpoints)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
